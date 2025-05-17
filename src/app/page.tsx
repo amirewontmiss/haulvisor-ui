@@ -111,7 +111,8 @@ export default function HaulVisorPage() {
     }
   };
 
-  const commonFetch = async (endpoint: string, payload: Record<string, unknown>, method: string = 'POST'): Promise<any> => { // Return Promise<any> or a more specific type
+  // MODIFIED: Changed Promise<any> to Promise<unknown>
+  const commonFetch = async (endpoint: string, payload: Record<string, unknown>, method: string = 'POST'): Promise<unknown> => { 
     setIsLoading(true);
     setApiError(''); 
     try {
@@ -132,7 +133,7 @@ export default function HaulVisorPage() {
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
       return await response.json();
-    } catch (error: unknown) { // Changed error type to unknown
+    } catch (error: unknown) { 
       console.error(`Error calling ${endpoint}:`, error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
       setApiError(`API Error: ${errorMessage}`);
@@ -148,13 +149,14 @@ export default function HaulVisorPage() {
     setResultOutput("");
     const payload = { circuit_json_str: circuitJson, backend: backend };
     try {
-        const data: CompileResponse = await commonFetch("/compile", payload);
+        // Cast the result of commonFetch to the expected type
+        const data = await commonFetch("/compile", payload) as CompileResponse;
         displayStructuredOutput(setQasmOutput, data.qasm || "No QASM returned.");
         if (data.error) {
             setApiError(`Compilation Error: ${data.error}`);
             displayMessage(setQasmOutput, `Compilation failed: ${data.error}`);
         }
-    } catch (error: unknown) { // Changed error type to unknown
+    } catch (error: unknown) { 
         const errorMessage = error instanceof Error ? error.message : "An unknown compilation error occurred";
         displayMessage(setQasmOutput, `Compilation failed: ${errorMessage}`);
     }
@@ -173,12 +175,12 @@ export default function HaulVisorPage() {
     };
 
     try {
-      const data: RunResponse = await commonFetch("/run", payload);
+      const data = await commonFetch("/run", payload) as RunResponse;
       displayStructuredOutput(setQasmOutput, data.qasm || "QASM not available from this run.");
       displayStructuredOutput(setJobLog, data.logs || `Synchronous run completed for backend: ${backend}. Job ID: ${data.job_id || 'N/A'}`);
       displayStructuredOutput(setResultOutput, data.result || data.error || "No result data.");
       if(data.error) setApiError(`Run Error: ${data.error}`);
-    } catch (error: unknown) { // Changed error type to unknown
+    } catch (error: unknown) { 
       const errorMessage = error instanceof Error ? error.message : "An unknown run error occurred";
       displayMessage(setQasmOutput, "Run failed.");
       displayMessage(setJobLog, `Error: ${errorMessage}`);
@@ -199,12 +201,12 @@ export default function HaulVisorPage() {
     };
 
     try {
-      const data: DispatchResponse = await commonFetch("/dispatch", payload);
+      const data = await commonFetch("/dispatch", payload) as DispatchResponse;
       displayStructuredOutput(setQasmOutput, data.qasm || "QASM not available from dispatch.");
       displayStructuredOutput(setJobLog, `${data.message}\nJob ID: ${data.job_id}`);
       displayMessage(setResultOutput, "Job dispatched. Check status with ID.");
       setJobIdToCheck(data.job_id); 
-    } catch (error: unknown) { // Changed error type to unknown
+    } catch (error: unknown) { 
       const errorMessage = error instanceof Error ? error.message : "An unknown dispatch error occurred";
       displayMessage(setQasmOutput, "Dispatch failed.");
       displayMessage(setJobLog, `Error: ${errorMessage}`);
@@ -230,7 +232,7 @@ export default function HaulVisorPage() {
       }
       const data: JobStatusResponse = await response.json();
       displayStructuredOutput(setStatusCheckOutput, data.status_data || "No status data found.");
-    } catch (error: unknown) { // Changed error type to unknown
+    } catch (error: unknown) { 
       console.error(`Error checking status for ${jobId}:`, error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while fetching status";
       setApiError(`API Error: ${errorMessage}`);
