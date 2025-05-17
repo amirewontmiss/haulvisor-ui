@@ -1,12 +1,13 @@
-// File: haulvisor-ui/app/page.tsx
-'use client'; // Required for Next.js App Router components that use client-side features like useState
+// File: haulvisor-ui/src/app/page.tsx
+'use client'; 
 
-import { useState, useEffect, FormEvent } from 'react';
+// Removed FormEvent as it was unused
+import { useState, useEffect } from 'react';
 
 // Base URL for your HaulVisor API
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api';
 
-// Define interfaces for API responses if you want stronger typing
+// Define interfaces for API responses
 interface CompileResponse {
   qasm?: string;
   error?: string;
@@ -14,8 +15,8 @@ interface CompileResponse {
 
 interface RunResponse extends CompileResponse {
   job_id?: string;
-  logs?: Record<string, any> | string; // Or a more specific type for logs
-  result?: any;
+  logs?: Record<string, unknown> | string; 
+  result?: unknown; // Changed from any
 }
 
 interface DispatchResponse {
@@ -25,14 +26,18 @@ interface DispatchResponse {
 }
 
 interface JobStatusData {
-  // Define based on what your get_job_by_id and log file actually return
   id?: string;
   status?: string;
   submitted?: string;
   completed?: string;
   error_message?: string;
   result_summary?: string;
-  [key: string]: any; // For other dynamic fields from logs
+  model_name?: string;
+  circ?: string;
+  gate_count?: number;
+  circuit_depth?: number; 
+  qubits?: number;
+  [key: string]: unknown; // Allow other dynamic fields, but typed as unknown
 }
 
 interface JobStatusResponse {
@@ -42,7 +47,6 @@ interface JobStatusResponse {
 
 
 export default function HaulVisorPage() {
-  // State for form inputs
   const [circuitJson, setCircuitJson] = useState<string>(
 `{
   "name": "BellState",
@@ -61,7 +65,6 @@ export default function HaulVisorPage() {
   const [retries, setRetries] = useState<number>(3);
   const [availableBackends, setAvailableBackends] = useState<string[]>(['pennylane', 'qiskit', 'braket', 'ibm']);
 
-  // State for outputs
   const [qasmOutput, setQasmOutput] = useState<string>('Awaiting circuit submission...');
   const [jobLog, setJobLog] = useState<string>('Awaiting job activity...');
   const [resultOutput, setResultOutput] = useState<string>('Awaiting results...');
@@ -71,7 +74,6 @@ export default function HaulVisorPage() {
   const [apiError, setApiError] = useState<string>('');
 
   useEffect(() => {
-    // Fetch available backends when the component mounts
     const fetchDevices = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/devices`);
@@ -91,23 +93,25 @@ export default function HaulVisorPage() {
       }
     };
     fetchDevices();
-  }, []); // Empty dependency array means this runs once on mount
+  }, [backend]); // Added 'backend' to dependency array
 
 
-  const displayMessage = (setter: React.Dispatch<React.SetStateAction<string>>, message: string, isError: boolean = false) => {
+  const displayMessage = (setter: React.Dispatch<React.SetStateAction<string>>, message: string) => { // Removed unused isError
     setter(message);
-    // Consider setting a specific error class on the output box if isError is true
   };
 
-  const displayStructuredOutput = (setter: React.Dispatch<React.SetStateAction<string>>, data: any) => {
-    if (typeof data === 'object') {
+  const displayStructuredOutput = (setter: React.Dispatch<React.SetStateAction<string>>, data: unknown) => { // Changed data type to unknown
+    if (typeof data === 'object' && data !== null) {
       setter(JSON.stringify(data, null, 2));
-    } else {
-      setter(data || "N/A"); 
+    } else if (data !== undefined && data !== null) {
+      setter(String(data));
+    }
+     else {
+      setter("N/A"); 
     }
   };
 
-  const commonFetch = async (endpoint: string, payload: object, method: string = 'POST') => {
+  const commonFetch = async (endpoint: string, payload: Record<string, unknown>, method: string = 'POST'): Promise<any> => { // Return Promise<any> or a more specific type
     setIsLoading(true);
     setApiError(''); 
     try {
@@ -128,9 +132,10 @@ export default function HaulVisorPage() {
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
       return await response.json();
-    } catch (error: any) {
+    } catch (error: unknown) { // Changed error type to unknown
       console.error(`Error calling ${endpoint}:`, error);
-      setApiError(`API Error: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+      setApiError(`API Error: ${errorMessage}`);
       throw error; 
     } finally {
       setIsLoading(false);
@@ -139,18 +144,19 @@ export default function HaulVisorPage() {
   
   const handleCompileOnly = async () => {
     displayMessage(setQasmOutput, "Compiling circuit...");
-    setJobLog(""); // Clear other outputs
+    setJobLog(""); 
     setResultOutput("");
-    const payload = { circuit_json_str: circuitJson, backend: backend }; // Only need circuit and backend for compile
+    const payload = { circuit_json_str: circuitJson, backend: backend };
     try {
         const data: CompileResponse = await commonFetch("/compile", payload);
         displayStructuredOutput(setQasmOutput, data.qasm || "No QASM returned.");
         if (data.error) {
             setApiError(`Compilation Error: ${data.error}`);
-            displayMessage(setQasmOutput, `Compilation failed: ${data.error}`, true);
+            displayMessage(setQasmOutput, `Compilation failed: ${data.error}`);
         }
-    } catch (error: any) {
-        displayMessage(setQasmOutput, `Compilation failed: ${error.message}`, true);
+    } catch (error: unknown) { // Changed error type to unknown
+        const errorMessage = error instanceof Error ? error.message : "An unknown compilation error occurred";
+        displayMessage(setQasmOutput, `Compilation failed: ${errorMessage}`);
     }
   };
 
@@ -163,7 +169,7 @@ export default function HaulVisorPage() {
       circuit_json_str: circuitJson,
       backend,
       priority,
-      retries: Number(retries), // Ensure retries is a number
+      retries: Number(retries),
     };
 
     try {
@@ -172,10 +178,11 @@ export default function HaulVisorPage() {
       displayStructuredOutput(setJobLog, data.logs || `Synchronous run completed for backend: ${backend}. Job ID: ${data.job_id || 'N/A'}`);
       displayStructuredOutput(setResultOutput, data.result || data.error || "No result data.");
       if(data.error) setApiError(`Run Error: ${data.error}`);
-    } catch (error: any) {
-      displayMessage(setQasmOutput, "Run failed.", true);
-      displayMessage(setJobLog, `Error: ${error.message}`, true);
-      displayMessage(setResultOutput, "Failed.", true);
+    } catch (error: unknown) { // Changed error type to unknown
+      const errorMessage = error instanceof Error ? error.message : "An unknown run error occurred";
+      displayMessage(setQasmOutput, "Run failed.");
+      displayMessage(setJobLog, `Error: ${errorMessage}`);
+      displayMessage(setResultOutput, "Failed.");
     }
   };
 
@@ -197,17 +204,18 @@ export default function HaulVisorPage() {
       displayStructuredOutput(setJobLog, `${data.message}\nJob ID: ${data.job_id}`);
       displayMessage(setResultOutput, "Job dispatched. Check status with ID.");
       setJobIdToCheck(data.job_id); 
-    } catch (error: any) {
-      displayMessage(setQasmOutput, "Dispatch failed.", true);
-      displayMessage(setJobLog, `Error: ${error.message}`, true);
-      displayMessage(setResultOutput, "Dispatch failed.", true);
+    } catch (error: unknown) { // Changed error type to unknown
+      const errorMessage = error instanceof Error ? error.message : "An unknown dispatch error occurred";
+      displayMessage(setQasmOutput, "Dispatch failed.");
+      displayMessage(setJobLog, `Error: ${errorMessage}`);
+      displayMessage(setResultOutput, "Dispatch failed.");
     }
   };
 
   const handleCheckStatus = async () => {
     const jobId = jobIdToCheck.trim();
     if (!jobId) {
-      displayMessage(setStatusCheckOutput, "Please enter a Job ID.", true);
+      displayMessage(setStatusCheckOutput, "Please enter a Job ID.");
       return;
     }
     setIsLoading(true);
@@ -215,7 +223,6 @@ export default function HaulVisorPage() {
     displayMessage(setStatusCheckOutput, `Checking status for Job ID: ${jobId}...`);
     
     try {
-      // commonFetch is designed for POST by default, so make a direct fetch for GET
       const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: response.statusText }));
@@ -223,10 +230,11 @@ export default function HaulVisorPage() {
       }
       const data: JobStatusResponse = await response.json();
       displayStructuredOutput(setStatusCheckOutput, data.status_data || "No status data found.");
-    } catch (error: any) {
+    } catch (error: unknown) { // Changed error type to unknown
       console.error(`Error checking status for ${jobId}:`, error);
-      setApiError(`API Error: ${error.message}`);
-      displayMessage(setStatusCheckOutput, `Error fetching status: ${error.message}`, true);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while fetching status";
+      setApiError(`API Error: ${errorMessage}`);
+      displayMessage(setStatusCheckOutput, `Error fetching status: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -358,7 +366,7 @@ export default function HaulVisorPage() {
           )}
         </div>
          <footer className="text-center mt-16 mb-8 py-4 text-slate-500 text-sm">
-            <p>HaulVisor UI v0.2.0 - API Connected</p>
+            <p>HaulVisor UI v0.2.1 - Lint Fixes</p>
         </footer>
       </div>
     </main>
